@@ -2,26 +2,31 @@ param(
     [object]$WebhookData
 )
 
-# Function to validate an email address using regex
-function Validate-EmailAddress {
-    param([string]$email)
-    $email -match "^\S+@\S+\.\S+$"
+# Parse the RequestBody from WebhookData, which is a JSON string
+if (-not [String]::IsNullOrWhiteSpace($WebhookData.RequestBody)) {
+    try {
+        $RequestBody = $WebhookData.RequestBody | ConvertFrom-Json
+    } catch {
+        throw "Failed to parse the RequestBody as JSON."
+    }
+} else {
+    throw "RequestBody is not set."
 }
 
 # Validate and cast input variables
-if (-not $WebhookData.InputMailboxName -or $WebhookData.InputMailboxName -isnot [string]) {
+if (-not $RequestBody.InputMailboxName -or $RequestBody.InputMailboxName -isnot [string]) {
     throw "InputMailboxName is not set or not a valid string."
 }
-if (-not $WebhookData.InputMailboxEmail -or $WebhookData.InputMailboxEmail -isnot [string]) {
+if (-not $RequestBody.InputMailboxEmail -or $RequestBody.InputMailboxEmail -isnot [string]) {
     throw "InputMailboxEmail is not set or not a valid string."
 }
-if (-not $WebhookData.UsersToGrantAccess -or $WebhookData.UsersToGrantAccess -isnot [array]) {
+if (-not $RequestBody.UsersToGrantAccess -or $RequestBody.UsersToGrantAccess -isnot [array]) {
     throw "UsersToGrantAccess is not set or not a valid string array."
 }
 
-$InputMailboxName = [string]$WebhookData.InputMailboxName
-$InputMailboxEmail = [string]$WebhookData.InputMailboxEmail
-$UsersToGrantAccess = [string[]]$WebhookData.UsersToGrantAccess
+$InputMailboxName = $RequestBody.InputMailboxName
+$InputMailboxEmail = $RequestBody.InputMailboxEmail
+$UsersToGrantAccess = $RequestBody.UsersToGrantAccess
 
 # Check if the email address is valid
 if (-not (Validate-EmailAddress -email $InputMailboxEmail)) {
