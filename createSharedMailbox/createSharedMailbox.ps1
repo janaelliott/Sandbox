@@ -2,9 +2,31 @@ param(
     [object]$WebhookData
 )
 
-$InputMailboxName = $WebhookData.InputMailboxName
-$InputMailboxEmail = $WebhookData.InputMailboxEmail
-$UsersToGrantAccess = $WebhookData.UsersToGrantAccess
+# Function to validate an email address using regex
+function Validate-EmailAddress {
+    param([string]$email)
+    $email -match "^\S+@\S+\.\S+$"
+}
+
+# Validate and cast input variables
+if (-not $WebhookData.InputMailboxName -or $WebhookData.InputMailboxName -isnot [string]) {
+    throw "InputMailboxName is not set or not a valid string."
+}
+if (-not $WebhookData.InputMailboxEmail -or $WebhookData.InputMailboxEmail -isnot [string]) {
+    throw "InputMailboxEmail is not set or not a valid string."
+}
+if (-not $WebhookData.UsersToGrantAccess -or $WebhookData.UsersToGrantAccess -isnot [array]) {
+    throw "UsersToGrantAccess is not set or not a valid string array."
+}
+
+$InputMailboxName = [string]$WebhookData.InputMailboxName
+$InputMailboxEmail = [string]$WebhookData.InputMailboxEmail
+$UsersToGrantAccess = [string[]]$WebhookData.UsersToGrantAccess
+
+# Check if the email address is valid
+if (-not (Validate-EmailAddress -email $InputMailboxEmail)) {
+    throw "The email address $InputMailboxEmail is not a valid email format."
+}
 
 # Retrieve the stored credential from Azure Automation
 $credential = Get-AutomationPSCredential -Name 'Srv_Automation_SharedMailboxCreation'
@@ -12,32 +34,22 @@ $credential = Get-AutomationPSCredential -Name 'Srv_Automation_SharedMailboxCrea
 # Connect to Exchange Online using the credential
 Connect-ExchangeOnline -Credential $credential -ShowProgress $true
 
-# Append (Skillsoft) to mailbox name
-$SharedMailboxName = $InputMailboxName + " (Skillsoft)"
-
-# If no email address is provided, create one based on the mailbox name
-if (-not $InputMailboxEmail) {
-    $StandardDomain = "@1b8v7r.onmicrosoft.com"
-    # Remove characters that are not allowed in an email address
-    $EmailLocalPart = $InputMailboxName -replace '[^\w.-]', '' # Keeps letters, numbers, periods, hyphens, and underscores
-    $SharedMailboxEmail = $EmailLocalPart.ToLower() + $StandardDomain
-} else {
-    $SharedMailboxEmail = $InputMailboxEmail
-}
-
 # Check if the email address is already in use
-if ($null -eq (Get-Recipient -Identity $SharedMailboxEmail -ErrorAction SilentlyContinue)) {
+if ($null -eq (Get-Recipient -Identity $InputMailboxEmail -ErrorAction SilentlyContinue)) {
     # Email address is not in use, so create the new shared mailbox
-    New-Mailbox -Shared -Name $SharedMailboxName -PrimarySmtpAddress $SharedMailboxEmail
+    New-Mailbox -Shared -Name $InputMailboxName -PrimarySmtpAddress $InputMailboxEmail
     
     # Assign full access to each user in the list
     foreach ($User in $UsersToGrantAccess) {
-        Add-MailboxPermission -Identity $SharedMailboxEmail -User $User -AccessRights FullAccess -InheritanceType All
-        Add-RecipientPermission -Identity $SharedMailboxEmail -Trustee $User -AccessRights SendAs -Confirm:$false
+        if (-not (Validate-EmailAddress -email $User)) {
+            throw "The user email address $User is not a valid email format."
+        }
+        Add-MailboxPermission -Identity $InputMailboxEmail -User $User -AccessRights FullAccess -InheritanceType All
+        Add-RecipientPermission -Identity $InputMailboxEmail -Trustee $User -AccessRights SendAs -Confirm:$false
     }
 } else {
     # Email address is in use, so output a message
-    Write-Host "The email address $SharedMailboxEmail is already in use."
+    Write-Error "The email address $InputMailboxEmail is already in use."
 }
 
 # Disconnect from Exchange Online
